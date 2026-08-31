@@ -73,8 +73,14 @@ func createNFSe(conn *pgx.Conn) http.HandlerFunc {
 func invoicesHandler(conn *pgx.Conn) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 
+		if r.Method != http.MethodGet {
+			http.Error(w, "Método não permitido", http.StatusMethodNotAllowed)
+			return
+		}
+
 		w.Header().Set("Content-Type", "application/json")
 
+		// Consulta todas as notas fiscais no banco de dados
 		rows, err := conn.Query(
 			context.Background(),
 			`SELECT id, number, status
@@ -87,10 +93,9 @@ func invoicesHandler(conn *pgx.Conn) http.HandlerFunc {
 			return
 		}
 
-		defer rows.Close()
-
 		invoices := []Invoice{}
 
+		// Lê todas as notas fiscais
 		for rows.Next() {
 			var invoice Invoice
 
@@ -101,13 +106,68 @@ func invoicesHandler(conn *pgx.Conn) http.HandlerFunc {
 			)
 
 			if err != nil {
+				rows.Close()
 				http.Error(w, "Erro ao ler nota fiscal", http.StatusInternalServerError)
 				return
 			}
 
+			// Inicializa os itens como uma lista vazia
+			invoice.Items = []InvoiceItem{}
+
+			// Adiciona a nota à lista
 			invoices = append(invoices, invoice)
 		}
 
+		// Fecha a consulta antes de fazer outra consulta
+		rows.Close()
+
+		// Consulta todos os itens das notas fiscais
+		itemRows, err := conn.Query(
+			context.Background(),
+			`SELECT id, invoice_id, product_id, quantity
+			 FROM invoice_items
+			 ORDER BY invoice_id, id`,
+		)
+
+		if err != nil {
+			fmt.Println("Erro ao buscar itens da nota fiscal:", err)
+			http.Error(w, "Erro ao buscar itens da nota fiscal", http.StatusInternalServerError)
+			return
+		}
+
+		// Lê os itens
+		for itemRows.Next() {
+			var item InvoiceItem
+
+			err := itemRows.Scan(
+				&item.ID,
+				&item.InvoiceID,
+				&item.ProductID,
+				&item.Quantity,
+			)
+
+			if err != nil {
+				itemRows.Close()
+				http.Error(w, "Erro ao ler item da nota fiscal", http.StatusInternalServerError)
+				return
+			}
+
+			// Procura a nota correspondente ao item
+			for i := range invoices {
+				if invoices[i].ID == item.InvoiceID {
+					invoices[i].Items = append(
+						invoices[i].Items,
+						item,
+					)
+
+					break
+				}
+			}
+		}
+
+		itemRows.Close()
+
+		// Retorna as notas fiscais com seus respectivos itens
 		json.NewEncoder(w).Encode(invoices)
 	}
 }
