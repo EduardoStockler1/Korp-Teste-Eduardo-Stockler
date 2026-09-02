@@ -1,23 +1,32 @@
-package main
+package handlers
 
 import (
 	"context"
-	"fmt"
+	"net/http"
 	"strconv"
+
+	"github.com/EduardoStockler1/Korp-Teste-Eduardo-Stockler/backend/services/stock/models"
 
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5"
+	"github.com/rs/zerolog/log"
 )
 
 // Cria produto a partir de uma requisição HTTP POST com JSON no corpo
-func createProductHandler(conn *pgx.Conn) gin.HandlerFunc {
+func CreateProductHandler(conn *pgx.Conn) gin.HandlerFunc {
 	return func(c *gin.Context) {
 
-		var product Product
+		var product models.Product
 
 		// Lê o JSON enviado na requisição
 		if err := c.ShouldBindJSON(&product); err != nil {
-			c.JSON(400, gin.H{
+			log.Error().
+				Err(err).
+				Str("service", "stock").
+				Str("operation", "create_product").
+				Msg("JSON inválido")
+
+			c.JSON(http.StatusBadRequest, gin.H{
 				"error": "JSON inválido",
 			})
 			return
@@ -35,21 +44,35 @@ func createProductHandler(conn *pgx.Conn) gin.HandlerFunc {
 		).Scan(&product.ID)
 
 		if err != nil {
-			c.JSON(500, gin.H{
+			log.Error().
+				Err(err).
+				Str("service", "stock").
+				Str("operation", "create_product").
+				Str("product_code", product.Code).
+				Msg("erro ao cadastrar produto")
+
+			c.JSON(http.StatusInternalServerError, gin.H{
 				"error": "Erro ao cadastrar produto",
 			})
 			return
 		}
 
-		fmt.Printf("Produto cadastrado: %+v\n", product)
+		log.Info().
+			Str("service", "stock").
+			Str("operation", "create_product").
+			Int("product_id", product.ID).
+			Str("product_code", product.Code).
+			Str("description", product.Description).
+			Int("stock", product.Stock).
+			Msg("produto cadastrado")
 
 		// Retorna o produto criado
-		c.JSON(201, product)
+		c.JSON(http.StatusCreated, product)
 	}
 }
 
 // Retorna a lista de produtos em formato JSON
-func productsHandler(conn *pgx.Conn) gin.HandlerFunc {
+func ProductsHandler(conn *pgx.Conn) gin.HandlerFunc {
 	return func(c *gin.Context) {
 
 		// Consulta os produtos no banco de dados
@@ -61,7 +84,13 @@ func productsHandler(conn *pgx.Conn) gin.HandlerFunc {
 		)
 
 		if err != nil {
-			c.JSON(500, gin.H{
+			log.Error().
+				Err(err).
+				Str("service", "stock").
+				Str("operation", "list_products").
+				Msg("erro ao buscar produtos")
+
+			c.JSON(http.StatusInternalServerError, gin.H{
 				"error": "Erro ao buscar produtos",
 			})
 			return
@@ -69,11 +98,11 @@ func productsHandler(conn *pgx.Conn) gin.HandlerFunc {
 
 		defer rows.Close()
 
-		products := []Product{}
+		products := []models.Product{}
 
 		// Percorre os produtos retornados pelo banco
 		for rows.Next() {
-			var product Product
+			var product models.Product
 
 			err := rows.Scan(
 				&product.ID,
@@ -83,7 +112,13 @@ func productsHandler(conn *pgx.Conn) gin.HandlerFunc {
 			)
 
 			if err != nil {
-				c.JSON(500, gin.H{
+				log.Error().
+					Err(err).
+					Str("service", "stock").
+					Str("operation", "list_products").
+					Msg("erro ao ler produto")
+
+				c.JSON(http.StatusInternalServerError, gin.H{
 					"error": "Erro ao ler produto",
 				})
 				return
@@ -92,24 +127,37 @@ func productsHandler(conn *pgx.Conn) gin.HandlerFunc {
 			products = append(products, product)
 		}
 
+		log.Info().
+			Str("service", "stock").
+			Str("operation", "list_products").
+			Int("products_count", len(products)).
+			Msg("produtos listados")
+
 		// Retorna a lista de produtos
-		c.JSON(200, products)
+		c.JSON(http.StatusOK, products)
 	}
 }
 
-// Verifica se um produto existe no banco de dados
-func productHandler(conn *pgx.Conn) gin.HandlerFunc {
+// Retorna um produto pelo ID
+func ProductHandler(conn *pgx.Conn) gin.HandlerFunc {
 	return func(c *gin.Context) {
 
 		id, err := strconv.Atoi(c.Param("id"))
 		if err != nil {
-			c.JSON(400, gin.H{
+			log.Warn().
+				Err(err).
+				Str("service", "stock").
+				Str("operation", "get_product").
+				Str("product_id", c.Param("id")).
+				Msg("ID de produto inválido")
+
+			c.JSON(http.StatusBadRequest, gin.H{
 				"error": "ID inválido",
 			})
 			return
 		}
 
-		var product Product
+		var product models.Product
 
 		err = conn.QueryRow(
 			context.Background(),
@@ -126,18 +174,38 @@ func productHandler(conn *pgx.Conn) gin.HandlerFunc {
 
 		if err != nil {
 			if err == pgx.ErrNoRows {
-				c.JSON(404, gin.H{
+				log.Warn().
+					Str("service", "stock").
+					Str("operation", "get_product").
+					Int("product_id", id).
+					Msg("produto não encontrado")
+
+				c.JSON(http.StatusNotFound, gin.H{
 					"error": "Produto não encontrado",
 				})
 				return
 			}
 
-			c.JSON(500, gin.H{
+			log.Error().
+				Err(err).
+				Str("service", "stock").
+				Str("operation", "get_product").
+				Int("product_id", id).
+				Msg("erro ao buscar produto")
+
+			c.JSON(http.StatusInternalServerError, gin.H{
 				"error": "Erro ao buscar produto",
 			})
 			return
 		}
 
-		c.JSON(200, product)
+		log.Info().
+			Str("service", "stock").
+			Str("operation", "get_product").
+			Int("product_id", product.ID).
+			Str("product_code", product.Code).
+			Msg("produto encontrado")
+
+		c.JSON(http.StatusOK, product)
 	}
 }
