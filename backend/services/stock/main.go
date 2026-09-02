@@ -1,32 +1,70 @@
 package main
 
 import (
-	"context"       //banco de dados
-	"encoding/json" //json para requisições HTTP
-	"fmt"           // biblioteca padrão para formatação de strings
-	"net/http"      // biblioteca padrão para criar servidor HTTP
+	"context"
+	"fmt"
+	"strconv"
 
-	"github.com/jackc/pgx/v5" // biblioteca para conectar ao PostgreSQL
+	"github.com/gin-gonic/gin"
+	"github.com/jackc/pgx/v5"
 )
 
-// Cria produto a patir de uma requisição HTTP POST com JSON no corpo da requisição
-func createProductHandler(conn *pgx.Conn) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost {
-			http.Error(w, "Método não permitido", http.StatusMethodNotAllowed)
-			return
-		}
+// Inicia o servidor HTTP na porta 8081
+func main() {
+
+	// Conecta ao banco de dados
+	conn, err := connectDatabase()
+
+	if err != nil {
+		fmt.Println("Erro ao conectar ao banco:", err)
+		return
+	}
+
+	// Fecha a conexão com o banco quando o programa terminar
+	defer conn.Close(context.Background())
+
+	// Testa a conexão com o banco
+	err = testDatabaseConnection(conn)
+
+	if err != nil {
+		fmt.Println("Erro ao testar conexão:", err)
+		return
+	}
+
+	// Cria o servidor Gin
+	r := gin.Default()
+
+	// Rotas de produtos
+	r.GET("/products/:id", productHandler(conn))
+	r.GET("/products", productsHandler(conn))
+	r.POST("/products", createProductHandler(conn))
+
+	fmt.Println("Stock Service iniciado em http://localhost:8081")
+
+	// Inicia o servidor
+	err = r.Run(":8081")
+
+	if err != nil {
+		fmt.Println("Erro ao iniciar servidor:", err)
+	}
+}
+
+// Cria produto a partir de uma requisição HTTP POST com JSON no corpo
+func createProductHandler(conn *pgx.Conn) gin.HandlerFunc {
+	return func(c *gin.Context) {
 
 		var product Product
 
-		err := json.NewDecoder(r.Body).Decode(&product)
-
-		if err != nil {
-			http.Error(w, "JSON inválido", http.StatusBadRequest)
+		// Lê o JSON enviado na requisição
+		if err := c.ShouldBindJSON(&product); err != nil {
+			c.JSON(400, gin.H{
+				"error": "JSON inválido",
+			})
 			return
 		}
 
-		err = conn.QueryRow(
+		// Insere o produto no banco de dados
+		err := conn.QueryRow(
 			context.Background(),
 			`INSERT INTO products (code, description, stock)
 			 VALUES ($1, $2, $3)
@@ -37,23 +75,24 @@ func createProductHandler(conn *pgx.Conn) http.HandlerFunc {
 		).Scan(&product.ID)
 
 		if err != nil {
-			http.Error(w, "Erro ao ao cadastrar produto", http.StatusInternalServerError)
+			c.JSON(500, gin.H{
+				"error": "Erro ao cadastrar produto",
+			})
 			return
 		}
 
-		fmt.Printf("Produto cadastrado...: %+v\n", product)
+		fmt.Printf("Produto cadastrado: %+v\n", product)
 
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusCreated)
-
-		json.NewEncoder(w).Encode(product)
+		// Retorna o produto criado
+		c.JSON(201, product)
 	}
 }
 
 // Retorna a lista de produtos em formato JSON
-func productsHandler(conn *pgx.Conn) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
+func productsHandler(conn *pgx.Conn) gin.HandlerFunc {
+	return func(c *gin.Context) {
+
+		// Consulta os produtos no banco de dados
 		rows, err := conn.Query(
 			context.Background(),
 			`SELECT id, code, description, stock
@@ -62,7 +101,9 @@ func productsHandler(conn *pgx.Conn) http.HandlerFunc {
 		)
 
 		if err != nil {
-			http.Error(w, "Erro ao buscar produtos", http.StatusInternalServerError)
+			c.JSON(500, gin.H{
+				"error": "Erro ao buscar produtos",
+			})
 			return
 		}
 
@@ -70,6 +111,7 @@ func productsHandler(conn *pgx.Conn) http.HandlerFunc {
 
 		products := []Product{}
 
+		// Percorre os produtos retornados pelo banco
 		for rows.Next() {
 			var product Product
 
@@ -81,50 +123,61 @@ func productsHandler(conn *pgx.Conn) http.HandlerFunc {
 			)
 
 			if err != nil {
-				http.Error(w, "Erro ao ler produto", http.StatusInternalServerError)
+				c.JSON(500, gin.H{
+					"error": "Erro ao ler produto",
+				})
 				return
 			}
 
 			products = append(products, product)
 		}
 
-		json.NewEncoder(w).Encode(products)
+		// Retorna a lista de produtos
+		c.JSON(200, products)
 	}
 }
 
-// Inicia o servidor HTTP na porta 8081
-func main() {
-	conn, err := connectDatabase()
+// Verifica se um produto existe no banco de dados
+func productHandler(conn *pgx.Conn) gin.HandlerFunc {
+	return func(c *gin.Context) {
 
-	if err != nil {
-		fmt.Println("Erro ao conectar ao banco:", err)
-		return
-	}
-
-	defer conn.Close(context.Background())
-
-	err = testDatabaseConnection(conn)
-
-	if err != nil {
-		fmt.Println("Erro ao testar conexão:", err)
-		return
-	}
-
-	http.HandleFunc("/products", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == http.MethodGet {
-			productsHandler(conn)(w, r)
-		} else if r.Method == http.MethodPost {
-			createProductHandler(conn)(w, r)
-		} else {
-			http.Error(w, "Método não permitido", http.StatusMethodNotAllowed)
+		id, err := strconv.Atoi(c.Param("id"))
+		if err != nil {
+			c.JSON(400, gin.H{
+				"error": "ID inválido",
+			})
+			return
 		}
-	})
 
-	fmt.Println("Stock Service iniciado em http://localhost:8081")
+		var product Product
 
-	err = http.ListenAndServe(":8081", nil)
+		err = conn.QueryRow(
+			context.Background(),
+			`SELECT id, code, description, stock
+			 FROM products
+			 WHERE id = $1`,
+			id,
+		).Scan(
+			&product.ID,
+			&product.Code,
+			&product.Description,
+			&product.Stock,
+		)
 
-	if err != nil {
-		fmt.Println("Erro ao iniciar servidor:", err)
+		if err != nil {
+			if err == pgx.ErrNoRows {
+				c.JSON(404, gin.H{
+					"error": "Produto não encontrado",
+				})
+				return
+			}
+
+			c.JSON(500, gin.H{
+				"error": "Erro ao buscar produto",
+			})
+			return
+		}
+
+		c.JSON(200, product)
 	}
 }

@@ -4,38 +4,79 @@ import (
 	"context"       //banco de dados
 	"encoding/json" // json para requisições HTTP
 	"fmt"           // biblioteca padrão para formatação de strings
-	"net/http"      // biblioteca padrão para criar servidor HTTP
+	"net/http"
 
-	"github.com/jackc/pgx/v5" // biblioteca para conectar ao PostgreSQL
+	"github.com/gin-gonic/gin" // biblioteca para criar servidor HTTP com rotas usando gin framework
+	"github.com/jackc/pgx/v5"  // biblioteca para conectar ao PostgreSQL
 )
 
-func createNFSe(conn *pgx.Conn) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost {
-			http.Error(w, "Método não permitido", http.StatusMethodNotAllowed)
+func main() {
+	conn, err := connectDatabase()
+
+	if err != nil {
+		fmt.Println("Erro ao conectar ao banco:", err)
+		return
+	}
+
+	defer conn.Close(context.Background())
+
+	err = testDatabaseConnection(conn)
+
+	if err != nil {
+		fmt.Println("Erro ao testar conexão:", err)
+		return
+	}
+
+	r := gin.Default()
+	r.POST("/invoices", createNFSe(conn))
+	r.GET("/invoices", invoicesHandler(conn))
+
+	fmt.Println("Invoicing Service iniciado em http://localhost:8082")
+
+	err = r.Run(":8082")
+
+	if err != nil {
+		fmt.Println("Erro ao iniciar servidor:", err)
+	}
+}
+
+func createNFSe(conn *pgx.Conn) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var invoice Invoice
+
+		var err error
+
+		// Lê e valida o JSON enviado na requisição
+		if err := c.ShouldBindJSON(&invoice); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "JSON inválido LINHA 51"})
 			return
 		}
 
-		var invoice Invoice
+		for _, item := range invoice.Items {
 
-		err := json.NewDecoder(r.Body).Decode(&invoice)
+			err := productExists(item.ProductID)
 
-		if err != nil {
-			http.Error(w, "JSON inválido", http.StatusBadRequest)
+			if err != nil {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "Erro ao buscar produto no stock service"})
+				return
+			}
+
 			return
 		}
 
 		err = conn.QueryRow(
 			context.Background(),
 			`INSERT INTO invoices (number, status)
-			 VALUES ($1, $2)
-			 RETURNING id`,
+			VALUES ($1, $2)
+			RETURNING id`,
 			invoice.Number,
 			invoice.Status,
 		).Scan(&invoice.ID)
 
 		if err != nil {
-			http.Error(w, "Erro ao ao cadastrar nota fiscal", http.StatusInternalServerError)
+			fmt.Println("ERRO AO INSERIR INVOICE:", err)
+
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Erro ao ao cadastrar nota fiscal LINHA 79"})
 			return
 		}
 
@@ -53,7 +94,7 @@ func createNFSe(conn *pgx.Conn) http.HandlerFunc {
 			).Scan(&item.ID)
 
 			if err != nil {
-				http.Error(w, "Erro ao adicionar item à nota fiscal", http.StatusInternalServerError)
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "Erro ao adicionar item à nota fiscal"})
 				return
 			}
 
@@ -62,23 +103,18 @@ func createNFSe(conn *pgx.Conn) http.HandlerFunc {
 
 		fmt.Printf("Nota fiscal cadastrada...: %+v\n", invoice)
 
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusCreated)
+		c.Header("Content-Type", "application/json")
+		c.Status(http.StatusCreated)
 
-		json.NewEncoder(w).Encode(invoice)
+		json.NewEncoder(c.Writer).Encode(invoice)
 	}
 }
 
 // Retorna a lista de notas fiscais em formato JSON
-func invoicesHandler(conn *pgx.Conn) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
+func invoicesHandler(conn *pgx.Conn) gin.HandlerFunc {
+	return func(c *gin.Context) {
 
-		if r.Method != http.MethodGet {
-			http.Error(w, "Método não permitido", http.StatusMethodNotAllowed)
-			return
-		}
-
-		w.Header().Set("Content-Type", "application/json")
+		c.Header("Content-Type", "application/json")
 
 		// Consulta todas as notas fiscais no banco de dados
 		rows, err := conn.Query(
@@ -89,7 +125,7 @@ func invoicesHandler(conn *pgx.Conn) http.HandlerFunc {
 		)
 
 		if err != nil {
-			http.Error(w, "Erro ao buscar notas fiscais", http.StatusInternalServerError)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Erro ao buscar notas fiscais"})
 			return
 		}
 
@@ -107,7 +143,7 @@ func invoicesHandler(conn *pgx.Conn) http.HandlerFunc {
 
 			if err != nil {
 				rows.Close()
-				http.Error(w, "Erro ao ler nota fiscal", http.StatusInternalServerError)
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "Erro ao ler nota fiscal LINHA 168"})
 				return
 			}
 
@@ -130,8 +166,7 @@ func invoicesHandler(conn *pgx.Conn) http.HandlerFunc {
 		)
 
 		if err != nil {
-			fmt.Println("Erro ao buscar itens da nota fiscal:", err)
-			http.Error(w, "Erro ao buscar itens da nota fiscal", http.StatusInternalServerError)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Erro ao buscar itens da nota fiscal"})
 			return
 		}
 
@@ -148,7 +183,7 @@ func invoicesHandler(conn *pgx.Conn) http.HandlerFunc {
 
 			if err != nil {
 				itemRows.Close()
-				http.Error(w, "Erro ao ler item da nota fiscal", http.StatusInternalServerError)
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "Erro ao ler item da nota fiscal LINHA 190"})
 				return
 			}
 
@@ -168,42 +203,29 @@ func invoicesHandler(conn *pgx.Conn) http.HandlerFunc {
 		itemRows.Close()
 
 		// Retorna as notas fiscais com seus respectivos itens
-		json.NewEncoder(w).Encode(invoices)
+		json.NewEncoder(c.Writer).Encode(invoices)
 	}
 }
 
-func main() {
-	conn, err := connectDatabase()
+func productExists(productID int) error {
+	url := fmt.Sprintf(
+		"http://localhost:8081/products/%d",
+		productID,
+	)
 
+	resp, err := http.Get(url)
 	if err != nil {
-		fmt.Println("Erro ao conectar ao banco:", err)
-		return
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusNotFound {
+		return fmt.Errorf("produto %d não encontrado", productID)
 	}
 
-	defer conn.Close(context.Background())
-
-	err = testDatabaseConnection(conn)
-
-	if err != nil {
-		fmt.Println("Erro ao testar conexão:", err)
-		return
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("erro ao consultar Stock Service")
 	}
 
-	http.HandleFunc("/invoices", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == http.MethodPost {
-			createNFSe(conn)(w, r)
-		} else if r.Method == http.MethodGet {
-			invoicesHandler(conn)(w, r)
-		} else {
-			http.Error(w, "Método não permitido", http.StatusMethodNotAllowed)
-		}
-	})
-
-	fmt.Println("Invoicing Service iniciado em http://localhost:8082")
-
-	err = http.ListenAndServe(":8082", nil)
-
-	if err != nil {
-		fmt.Println("Erro ao iniciar servidor:", err)
-	}
+	return nil
 }
