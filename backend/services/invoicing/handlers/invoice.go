@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
+	"strconv"
 
 	"github.com/EduardoStockler1/Korp-Teste-Eduardo-Stockler/backend/services/invoicing/models"
 
@@ -20,17 +22,20 @@ func CreateNFSeHandler(conn *pgx.Conn) gin.HandlerFunc {
 
 		// Lê e valida o JSON enviado na requisição
 		if err := c.ShouldBindJSON(&invoice); err != nil {
-			log.Error().
+			log.Warn().
 				Err(err).
 				Str("service", "invoicing").
 				Str("operation", "create_nfse").
-				Msg("JSON inválido")
+				Msg("Payload inválido")
 
 			c.JSON(http.StatusBadRequest, gin.H{
-				"error": "JSON inválido",
+				"error":   "Payload inválido",
+				"details": err.Error(),
 			})
 			return
 		}
+
+		invoice.Status = "OPEN" //Nota por padrão deve ser gerada com status OPEN, pois ainda não foi impressa
 
 		// Verifica se todos os produtos existem no Stock Service
 		for _, item := range invoice.Items {
@@ -165,12 +170,60 @@ func InvoicesHandler(conn *pgx.Conn) gin.HandlerFunc {
 
 		c.Header("Content-Type", "application/json")
 
+		page, err := strconv.Atoi(c.DefaultQuery("page", "1"))
+
+		if err != nil || page < 1 {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"error": "página inválida",
+			})
+			return
+		}
+
+		// Quantidade de registros por página
+		limit, err := strconv.Atoi(c.DefaultQuery("limit", "10"))
+		if err != nil || limit < 1 {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"error": "Limite inválido",
+			})
+			return
+		}
+
+		if limit > 100 {
+			limit = 100
+		}
+
+		offset := (page - 1) * limit
+
+		// total de invoices
+		var total int
+
 		// Consulta todas as notas fiscais no banco de dados
+		err = conn.QueryRow(
+			context.Background(),
+			`SELECT COUNT(*) FROM invoices`,
+		).Scan(&total)
+
+		if err != nil {
+			log.Error().
+				Err(err).
+				Str("service", "invoicing").
+				Str("operation", "list_invoices").
+				Msg("erro ao buscar notas fiscais")
+
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"error": "Erro ao buscar notas fiscais",
+			})
+			return
+		}
+
 		rows, err := conn.Query(
 			context.Background(),
 			`SELECT id, number, status
 			 FROM invoices
-			 ORDER BY id`,
+			 ORDER BY id
+		  	 LIMIT $1 OFFSET $2`,
+			limit,
+			offset,
 		)
 
 		if err != nil {
@@ -186,9 +239,11 @@ func InvoicesHandler(conn *pgx.Conn) gin.HandlerFunc {
 			return
 		}
 
+		defer rows.Close()
+
 		invoices := []models.Invoice{}
 
-		// Lê todas as notas fiscais
+		//
 		for rows.Next() {
 			var invoice models.Invoice
 
@@ -220,86 +275,93 @@ func InvoicesHandler(conn *pgx.Conn) gin.HandlerFunc {
 			invoices = append(invoices, invoice)
 		}
 
-		// Fecha a consulta antes de fazer outra consulta
-		rows.Close()
-
 		// Consulta todos os itens das notas fiscais
-		itemRows, err := conn.Query(
-			context.Background(),
-			`SELECT id, invoice_id, product_id, quantity
-			 FROM invoice_items
-			 ORDER BY invoice_id, id`,
-		)
 
-		if err != nil {
-			log.Error().
-				Err(err).
-				Str("service", "invoicing").
-				Str("operation", "list_invoice_items").
-				Msg("erro ao buscar itens das notas fiscais")
+		for i := range invoices {
 
-			c.JSON(http.StatusInternalServerError, gin.H{
-				"error": "Erro ao buscar itens da nota fiscal",
-			})
-			return
-		}
-
-		// Lê os itens
-		for itemRows.Next() {
-			var item models.InvoiceItem
-
-			err := itemRows.Scan(
-				&item.ID,
-				&item.InvoiceID,
-				&item.ProductID,
-				&item.Quantity,
+			itemRows, err := conn.Query(
+				context.Background(),
+				`SELECT id, invoice_id, product_id, quantity
+				 FROM invoice_items
+				 WHERE invoice_id = $1
+				 ORDER BY id`,
+				invoices[i].ID,
 			)
 
 			if err != nil {
-				itemRows.Close()
-
 				log.Error().
 					Err(err).
 					Str("service", "invoicing").
-					Str("operation", "scan_invoice_item").
-					Msg("erro ao ler item da nota fiscal")
+					Str("operation", "list_invoice_items").
+					Int("invoice_id", invoices[i].ID).
+					Msg("erro ao buscar itens das notas fiscais")
 
 				c.JSON(http.StatusInternalServerError, gin.H{
-					"error": "Erro ao ler item da nota fiscal",
+					"error": "Erro ao buscar itens da nota fiscal",
 				})
 				return
 			}
 
-			// Procura a nota correspondente ao item
-			for i := range invoices {
-				if invoices[i].ID == item.InvoiceID {
-					invoices[i].Items = append(
-						invoices[i].Items,
-						item,
-					)
+			for itemRows.Next() {
+				var item models.InvoiceItem
 
-					break
+				err := itemRows.Scan(
+					&item.ID,
+					&item.InvoiceID,
+					&item.ProductID,
+					&item.Quantity,
+				)
+
+				if err != nil {
+					itemRows.Close()
+
+					log.Error().
+						Err(err).
+						Str("service", "invoicing").
+						Str("operation", "scan_invoice_item").
+						Int("invoice_id", item.InvoiceID).
+						Msg("erro ao ler item da nota fiscal")
+
+					c.JSON(http.StatusInternalServerError, gin.H{
+						"error": "Erro ao ler item da nota fiscal",
+					})
+					return
 				}
+				invoices[i].Items = append(invoices[i].Items, item)
 			}
+			itemRows.Close()
 		}
 
-		itemRows.Close()
+		totalPages := (total + limit - 1) / limit
 
 		log.Info().
 			Str("service", "invoicing").
 			Str("operation", "list_invoices").
-			Int("invoices_count", len(invoices)).
-			Msg("notas fiscais listadas")
+			Int("page", page).
+			Int("limit", limit).
+			Int("total", total).
+			Msg("invoices listadas")
 
-		// Retorna as notas fiscais com seus respectivos itens
-		json.NewEncoder(c.Writer).Encode(invoices)
+		c.JSON(http.StatusOK, gin.H{
+			"data":       invoices,
+			"page":       page,
+			"limit":      limit,
+			"total":      total,
+			"totalPages": totalPages,
+		})
 	}
 }
 
 // Verifica se um produto existe no Stock Service
 func productExists(productID int) error {
+	stockServiceURL := os.Getenv("STOCK_SERVICE_URL")
+
+	if stockServiceURL == "" {
+		stockServiceURL = "http://localhost:8081"
+	}
 	url := fmt.Sprintf(
-		"http://localhost:8081/products/%d",
+		"%s/products/%d",
+		stockServiceURL,
 		productID,
 	)
 

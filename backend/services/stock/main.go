@@ -2,7 +2,9 @@ package main
 
 import (
 	"context"
+	"os"
 
+	"github.com/EduardoStockler1/Korp-Teste-Eduardo-Stockler/backend/services/stock/middleware"
 	"github.com/EduardoStockler1/Korp-Teste-Eduardo-Stockler/backend/services/stock/routes"
 
 	"github.com/gin-gonic/gin"
@@ -43,7 +45,9 @@ func main() {
 	}
 
 	// Cria o servidor Gin
-	r := gin.Default()
+	r := gin.New()
+
+	r.Use(middleware.RecoveryMiddleware())
 
 	// Configura as rotas
 	routes.SetupRoutes(r, conn)
@@ -54,7 +58,13 @@ func main() {
 		Msg("Stock Service iniciado")
 
 	// Inicia o servidor
-	err = r.Run(":8081")
+	port := os.Getenv("STOCK_PORT")
+
+	if port == "" {
+		port = "8081"
+	}
+
+	err = r.Run(":" + port)
 
 	if err != nil {
 		log.Error().

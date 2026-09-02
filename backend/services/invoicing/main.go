@@ -2,9 +2,12 @@ package main
 
 import (
 	"context" //banco de dados
+	"os"
+
 	// json para requisições HTTP
 	// biblioteca padrão para formatação de strings
 
+	"github.com/EduardoStockler1/Korp-Teste-Eduardo-Stockler/backend/services/invoicing/middleware"
 	"github.com/EduardoStockler1/Korp-Teste-Eduardo-Stockler/backend/services/invoicing/routes"
 	"github.com/gin-gonic/gin"
 	"github.com/rs/zerolog/log"
@@ -39,7 +42,10 @@ func main() {
 		return
 	}
 
-	r := gin.Default()
+	r := gin.New()
+
+	r.Use(middleware.RecoveryMiddleware())
+
 	routes.SetupRoutes(r, conn)
 
 	log.Info().
@@ -48,7 +54,14 @@ func main() {
 		Msg("Invoicing Service iniciado")
 
 	// inicia o servidor
-	err = r.Run(":8082")
+	port := os.Getenv("INVOICING_PORT")
+
+	if port == "" {
+		port = "8082"
+	}
+
+	err = r.Run(":" + port)
+
 	if err != nil {
 		log.Error().
 			Err(err).

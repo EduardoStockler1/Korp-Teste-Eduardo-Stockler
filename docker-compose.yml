@@ -1,0 +1,31 @@
+services:
+  stock:
+    build:
+      context: ./backend/services/stock
+    container_name: nfse-stock
+    environment:
+      STOCK_PORT: 8081
+      DB_HOST: host.docker.internal
+      DB_PORT: 5432
+      DB_USER: postgres
+      DB_PASSWORD: postgres
+      DB_NAME: nfs_issuer
+    ports:
+      - "8081:8081"
+
+  invoicing:
+    build:
+      context: ./backend/services/invoicing
+    container_name: nfse-invoicing
+    environment:
+      INVOICING_PORT: 8082
+      STOCK_SERVICE_URL: http://stock:8081
+      DB_HOST: host.docker.internal
+      DB_PORT: 5432
+      DB_USER: postgres
+      DB_PASSWORD: postgres
+      DB_NAME: nfs_issuer
+    ports:
+      - "8082:8082"
+    depends_on:
+      - stock

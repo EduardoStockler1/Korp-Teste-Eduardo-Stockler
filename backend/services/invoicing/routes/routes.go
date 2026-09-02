@@ -10,4 +10,9 @@ import (
 func SetupRoutes(r *gin.Engine, conn *pgx.Conn) {
 	r.GET("/invoices", handlers.InvoicesHandler(conn))
 	r.POST("/invoices", handlers.CreateNFSeHandler(conn))
+
+	// Teste de rota para gerar um panic e testar o middleware de recuperação
+	r.GET("/test-panic", func(c *gin.Context) {
+		panic("panic de teste")
+	})
 }
