@@ -7,6 +7,7 @@ import (
 	"github.com/EduardoStockler1/Korp-Teste-Eduardo-Stockler/backend/services/stock/middleware"
 	"github.com/EduardoStockler1/Korp-Teste-Eduardo-Stockler/backend/services/stock/routes"
 
+	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	"github.com/rs/zerolog/log"
 )
@@ -46,6 +47,13 @@ func main() {
 
 	// Cria o servidor Gin
 	r := gin.New()
+
+	r.Use(cors.New(cors.Config{
+		AllowOrigins:     []string{"http://localhost:4200"},
+		AllowMethods:     []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
+		AllowHeaders:     []string{"Origin", "Content-Type", "Accept"},
+		AllowCredentials: true,
+	}))
 
 	r.Use(middleware.RecoveryMiddleware())
 
