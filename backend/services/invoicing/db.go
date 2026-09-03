@@ -5,11 +5,11 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 // conectando ao banco de dados
-func connectDatabase() (*pgx.Conn, error) {
+func connectDatabase() (*pgxpool.Pool, error) {
 	dbHost := os.Getenv("DB_HOST")
 	if dbHost == "" {
 		dbHost = "localhost"
@@ -44,7 +44,7 @@ func connectDatabase() (*pgx.Conn, error) {
 		dbName,
 	)
 
-	conn, err := pgx.Connect(
+	pool, err := pgxpool.New(
 		context.Background(),
 		databaseURL,
 	)
@@ -53,12 +53,12 @@ func connectDatabase() (*pgx.Conn, error) {
 		return nil, err
 	}
 
-	return conn, nil
+	return pool, nil
 }
 
 // Testando conexão com o db...
-func testDatabaseConnection(conn *pgx.Conn) error {
-	err := conn.Ping(context.Background())
+func testDatabaseConnection(pool *pgxpool.Pool) error {
+	err := pool.Ping(context.Background())
 
 	if err != nil {
 		return err

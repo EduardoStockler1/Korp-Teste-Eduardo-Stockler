@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"os"
 
 	"github.com/EduardoStockler1/Korp-Teste-Eduardo-Stockler/backend/services/stock/middleware"
@@ -19,7 +18,7 @@ func main() {
 	initLogger()
 
 	// Conecta ao banco de dados
-	conn, err := connectDatabase()
+	pool, err := connectDatabase()
 
 	if err != nil {
 		log.Error().
@@ -30,11 +29,11 @@ func main() {
 		return
 	}
 
-	// Fecha a conexão com o banco quando o programa terminar
-	defer conn.Close(context.Background())
+	// Fecha o pool de conexões quando o programa terminar
+	defer pool.Close()
 
 	// Testa a conexão com o banco
-	err = testDatabaseConnection(conn)
+	err = testDatabaseConnection(pool)
 
 	if err != nil {
 		log.Error().
@@ -58,7 +57,7 @@ func main() {
 	r.Use(middleware.RecoveryMiddleware())
 
 	// Configura as rotas
-	routes.SetupRoutes(r, conn)
+	routes.SetupRoutes(r, pool)
 
 	log.Info().
 		Str("service", "stock").

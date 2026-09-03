@@ -1,24 +1,21 @@
 package main
 
 import (
-	"context" //banco de dados
 	"os"
-
-	// json para requisições HTTP
-	// biblioteca padrão para formatação de strings
 
 	"github.com/EduardoStockler1/Korp-Teste-Eduardo-Stockler/backend/services/invoicing/middleware"
 	"github.com/EduardoStockler1/Korp-Teste-Eduardo-Stockler/backend/services/invoicing/routes"
+
+	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
+
 	"github.com/rs/zerolog/log"
-	// biblioteca para criar servidor HTTP com rotas usando gin framework
-	// biblioteca para conectar ao PostgreSQL
 )
 
 func main() {
 
 	// conecta ao banco de dados
-	conn, err := connectDatabase()
+	pool, err := connectDatabase()
 
 	if err != nil {
 		log.Error().
@@ -28,11 +25,11 @@ func main() {
 		return
 	}
 
-	// fecha a conexão com o banco quando o programa terminar
-	defer conn.Close(context.Background())
+	// fecha o pool de conexões quando o programa terminar
+	defer pool.Close()
 
 	// testa a conexão com o banco
-	err = testDatabaseConnection(conn)
+	err = testDatabaseConnection(pool)
 
 	if err != nil {
 		log.Error().
@@ -44,9 +41,16 @@ func main() {
 
 	r := gin.New()
 
+	r.Use(cors.New(cors.Config{
+		AllowOrigins:     []string{"http://localhost:4200"},
+		AllowMethods:     []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
+		AllowHeaders:     []string{"Origin", "Content-Type", "Accept"},
+		AllowCredentials: true,
+	}))
+
 	r.Use(middleware.RecoveryMiddleware())
 
-	routes.SetupRoutes(r, conn)
+	routes.SetupRoutes(r, pool)
 
 	log.Info().
 		Str("service", "invoicing").

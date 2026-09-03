@@ -9,11 +9,12 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/rs/zerolog/log"
 )
 
 // Cria produto a partir de uma requisição HTTP POST com JSON no corpo
-func CreateProductHandler(conn *pgx.Conn) gin.HandlerFunc {
+func CreateProductHandler(pool *pgxpool.Pool) gin.HandlerFunc {
 	return func(c *gin.Context) {
 
 		var product models.Product
@@ -33,7 +34,7 @@ func CreateProductHandler(conn *pgx.Conn) gin.HandlerFunc {
 		}
 
 		// Insere o produto no banco de dados
-		err := conn.QueryRow(
+		err := pool.QueryRow(
 			context.Background(),
 			`INSERT INTO products (code, description, stock)
 			 VALUES ($1, $2, $3)
@@ -72,11 +73,11 @@ func CreateProductHandler(conn *pgx.Conn) gin.HandlerFunc {
 }
 
 // Retorna a lista de produtos em formato JSON
-func ProductsHandler(conn *pgx.Conn) gin.HandlerFunc {
+func ProductsHandler(pool *pgxpool.Pool) gin.HandlerFunc {
 	return func(c *gin.Context) {
 
 		// Consulta os produtos no banco de dados
-		rows, err := conn.Query(
+		rows, err := pool.Query(
 			context.Background(),
 			`SELECT id, code, description, stock
 			 FROM products
@@ -139,7 +140,7 @@ func ProductsHandler(conn *pgx.Conn) gin.HandlerFunc {
 }
 
 // Retorna um produto pelo ID
-func ProductHandler(conn *pgx.Conn) gin.HandlerFunc {
+func ProductHandler(pool *pgxpool.Pool) gin.HandlerFunc {
 	return func(c *gin.Context) {
 
 		id, err := strconv.Atoi(c.Param("id"))
@@ -159,7 +160,7 @@ func ProductHandler(conn *pgx.Conn) gin.HandlerFunc {
 
 		var product models.Product
 
-		err = conn.QueryRow(
+		err = pool.QueryRow(
 			context.Background(),
 			`SELECT id, code, description, stock
 			 FROM products
@@ -205,6 +206,101 @@ func ProductHandler(conn *pgx.Conn) gin.HandlerFunc {
 			Int("product_id", product.ID).
 			Str("product_code", product.Code).
 			Msg("produto encontrado")
+
+		c.JSON(http.StatusOK, product)
+	}
+}
+
+func DecreaseStockHandler(pool *pgxpool.Pool) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		id, err := strconv.Atoi(c.Param("id"))
+		if err != nil {
+			log.Warn().
+				Err(err).
+				Str("service", "stock").
+				Str("operation", "decrease_stock").
+				Str("product_id", c.Param("id")).
+				Msg("ID de produto inválido")
+
+			c.JSON(http.StatusBadRequest, gin.H{
+				"error": "ID inválido",
+			})
+			return
+		}
+
+		var request struct {
+			Quantity int `json:"quantity" binding:"required,gt=0"`
+		}
+
+		if err := c.ShouldBindJSON(&request); err != nil {
+			log.Warn().
+				Err(err).
+				Str("service", "stock").
+				Str("operation", "decrease_stock").
+				Str("product_id", c.Param("id")).
+				Msg("dados da requisição inválidos")
+
+			c.JSON(http.StatusBadRequest, gin.H{
+				"error": "Dados inválidos",
+			})
+			return
+		}
+
+		var product models.Product
+
+		err = pool.QueryRow(
+			context.Background(),
+			`UPDATE products
+			 SET stock = stock - $1
+			 WHERE id = $2
+			   AND stock >= $1
+			 RETURNING id, code, description, stock`,
+			request.Quantity,
+			id,
+		).Scan(
+			&product.ID,
+			&product.Code,
+			&product.Description,
+			&product.Stock,
+		)
+
+		if err != nil {
+			if err == pgx.ErrNoRows {
+				log.Warn().
+					Str("service", "stock").
+					Str("operation", "decrease_stock").
+					Int("product_id", id).
+					Int("quantity", request.Quantity).
+					Msg("estoque insuficiente ou produto não encontrado")
+
+				c.JSON(http.StatusConflict, gin.H{
+					"error": "Estoque insuficiente ou produto não encontrado",
+				})
+				return
+			}
+
+			log.Error().
+				Err(err).
+				Str("service", "stock").
+				Str("operation", "decrease_stock").
+				Int("product_id", id).
+				Int("quantity", request.Quantity).
+				Msg("erro ao diminuir estoque")
+
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"error": "Erro ao diminuir estoque",
+			})
+			return
+		}
+
+		log.Info().
+			Str("service", "stock").
+			Str("operation", "decrease_stock").
+			Int("product_id", product.ID).
+			Str("product_code", product.Code).
+			Int("quantity", request.Quantity).
+			Int("remaining_stock", product.Stock).
+			Msg("estoque diminuído")
 
 		c.JSON(http.StatusOK, product)
 	}
