@@ -1,6 +1,8 @@
 package routes
 
 import (
+	"net/http"
+
 	"github.com/EduardoStockler1/Korp-Teste-Eduardo-Stockler/backend/services/invoicing/handlers"
 
 	"github.com/gin-gonic/gin"
@@ -8,6 +10,22 @@ import (
 )
 
 func SetupRoutes(r *gin.Engine, pool *pgxpool.Pool) {
+	r.GET("/health", func(c *gin.Context) {
+		if err := pool.Ping(c.Request.Context()); err != nil {
+			c.JSON(http.StatusServiceUnavailable, gin.H{
+				"status":  "unhealthy",
+				"service": "invoicing",
+				"error":   "database unavailable",
+			})
+			return
+		}
+
+		c.JSON(http.StatusOK, gin.H{
+			"status":  "healthy",
+			"service": "invoicing",
+		})
+	})
+
 	r.GET("/invoices", handlers.InvoicesHandler(pool))
 	r.POST("/invoices", handlers.CreateNFSeHandler(pool))
 	r.POST("/invoices/:id/print", handlers.PrintInvoiceHandler(pool))

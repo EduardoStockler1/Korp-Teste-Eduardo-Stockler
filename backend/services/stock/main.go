@@ -9,6 +9,7 @@ import (
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	"github.com/rs/zerolog/log"
+	ginprometheus "github.com/zsais/go-gin-prometheus"
 )
 
 // Inicia o servidor HTTP na porta 8081
@@ -46,6 +47,9 @@ func main() {
 
 	// Cria o servidor Gin
 	r := gin.New()
+
+	p := ginprometheus.NewPrometheus("gin")
+	p.Use(r)
 
 	r.Use(cors.New(cors.Config{
 		AllowOrigins:     []string{"http://localhost:4200"},
