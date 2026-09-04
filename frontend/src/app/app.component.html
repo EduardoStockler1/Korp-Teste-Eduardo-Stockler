@@ -1,0 +1,25 @@
+<div class="app-container">
+  <header class="navigation">
+    <div class="navigation-brand">
+      <strong><a href="/">NFSe Issuer</a></strong>
+    </div>
+
+    <div class="navigation-links">
+      <a routerLink="/products" routerLinkActive="active">
+        Produtos
+      </a>
+
+      <a routerLink="/products/new" routerLinkActive="active">
+        Cadastrar Produto
+      </a>
+
+      <a routerLink="/invoice" routerLinkActive="active">
+        Notas Fiscais
+      </a>
+    </div>
+  </header>
+
+  <main class="app-content">
+    <router-outlet />
+  </main>
+</div>

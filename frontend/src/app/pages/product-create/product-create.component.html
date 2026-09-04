@@ -1,0 +1,117 @@
+<p>product-create works!</p>
+<section class="product-create-page">
+
+  <div class="product-create-container">
+
+    <header class="page-header">
+
+      <div>
+        <span class="eyebrow">NFSe Issuer</span>
+
+        <h1>Cadastrar Produto</h1>
+
+        <p>
+          Cadastre um novo produto no estoque.
+        </p>
+      </div>
+
+      <a
+        routerLink="/products"
+        class="back-button">
+        Voltar para produtos
+      </a>
+
+    </header>
+
+    <form
+      class="product-form"
+      (ngSubmit)="createProduct()">
+
+      <div class="form-group">
+
+        <label for="code">
+          Código do produto
+        </label>
+
+        <input
+          id="code"
+          name="code"
+          type="text"
+          [(ngModel)]="code"
+          placeholder="Ex.: PROD-001"
+          [disabled]="loading"
+        />
+
+      </div>
+
+      <div class="form-group">
+
+        <label for="description">
+          Descrição
+        </label>
+
+        <input
+          id="description"
+          name="description"
+          type="text"
+          [(ngModel)]="description"
+          placeholder="Ex.: Notebook Dell"
+          [disabled]="loading"
+        />
+
+      </div>
+
+      <div class="form-group">
+
+        <label for="stock">
+          Estoque inicial
+        </label>
+
+        <input
+          id="stock"
+          name="stock"
+          type="number"
+          min="0"
+          [(ngModel)]="stock"
+          placeholder="Ex.: 10"
+          [disabled]="loading"
+        />
+
+      </div>
+
+      @if (error) {
+
+        <div class="error-message">
+          {{ error }}
+        </div>
+
+      }
+
+      <div class="form-actions">
+
+        <a
+          routerLink="/products"
+          class="cancel-button">
+          Cancelar
+        </a>
+
+        <button
+          type="submit"
+          class="submit-button"
+          [disabled]="loading">
+
+          @if (loading) {
+            Cadastrando...
+          } @else {
+            Cadastrar Produto
+          }
+
+        </button>
+
+      </div>
+
+    </form>
+
+  </div>
+
+</section>

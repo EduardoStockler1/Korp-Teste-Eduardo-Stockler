@@ -1,0 +1,110 @@
+<section class="invoice-list-page">
+  <div class="invoice-list-container">
+
+    <header class="page-header">
+      <div>
+        <small>NFSe Issuer</small>
+        <h1>Notas Fiscais</h1>
+        <p>Histórico das notas fiscais emitidas.</p>
+      </div>
+
+      <a routerLink="/products" class="new-invoice-button">
+        + Nova Nota
+      </a>
+    </header>
+
+    @if (loading) {
+      <div class="state-message">
+        <p>Carregando notas fiscais...</p>
+      </div>
+    }
+
+    @if (!loading && error) {
+      <div class="state-message error">
+        <p>{{ error }}</p>
+        <button type="button" (click)="loadInvoices()">
+          Tentar novamente
+        </button>
+      </div>
+    }
+
+    @if (!loading && !error && invoices.length === 0) {
+      <div class="state-message">
+        <h2>Nenhuma nota fiscal encontrada</h2>
+        <p>Crie sua primeira nota fiscal para começar.</p>
+
+        <a routerLink="/products" class="new-invoice-button" routerLinkActive="active">
+          Criar Nota Fiscal
+        </a>
+      </div>
+    }
+
+    @if (!loading && !error && invoices.length > 0) {
+      <div class="invoice-grid">
+
+        @for (invoice of invoices; track invoice.id) {
+          <article class="invoice-card">
+
+            <header class="invoice-card-header">
+              <div>
+                <span>NFSe #{{ invoice.id }}</span>
+                <h2>Nº {{ invoice.number }}</h2>
+              </div>
+
+              <strong
+                class="invoice-status"
+                [class.closed]="invoice.status === 'CLOSED'"
+              >
+                {{ invoice.status }}
+              </strong>
+            </header>
+
+            <div class="invoice-card-summary">
+              <div>
+                <span>Itens</span>
+                <strong>{{ getTotalItems(invoice) }}</strong>
+              </div>
+
+              <div>
+                <span>Produtos</span>
+                <strong>{{ invoice.items.length }}</strong>
+              </div>
+            </div>
+
+            <section class="invoice-items">
+              <h3>Itens da nota</h3>
+
+              @for (item of invoice.items; track item.id) {
+                <div class="invoice-item">
+                  <div>
+                    <strong>{{ item.productDescription }}</strong>
+                    <span>Produto #{{ item.productId }}</span>
+                  </div>
+
+                  <strong class="item-quantity">
+                    {{ item.quantity }}x
+                  </strong>
+                </div>
+              }
+            </section>
+
+            @if (invoice.status === 'OPEN') {
+              <footer class="invoice-card-actions">
+                <button
+                  type="button"
+                  class="print-button"
+                  (click)="printInvoice(invoice.id)"
+                >
+                  🖨️ Imprimir Nota
+                </button>
+              </footer>
+            }
+
+          </article>
+        }
+
+      </div>
+    }
+
+  </div>
+</section>

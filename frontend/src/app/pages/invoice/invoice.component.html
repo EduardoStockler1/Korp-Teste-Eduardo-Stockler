@@ -1,0 +1,114 @@
+@if (invoice) {
+
+  <section class="invoice">
+
+    <div class="invoice-card">
+
+      <header class="invoice-top">
+
+        <div class="brand">
+          <small>NFSe Issuer</small>
+          <h1>Nota Fiscal de Serviço</h1>
+        </div>
+
+        <div class="invoice-number">
+          <span>Número da NFSe</span>
+          <strong>{{ invoice.number }}</strong>
+        </div>
+
+      </header>
+
+      <div class="invoice-content">
+
+        <section class="invoice-info">
+
+          <div class="info-box">
+            <span>Status</span>
+
+            <strong class="status-open">
+              {{ invoice.status }}
+            </strong>
+          </div>
+
+          <div class="info-box">
+            <span>Identificação</span>
+
+            <strong>
+              NFSe #{{ invoice.id }}
+            </strong>
+          </div>
+
+        </section>
+
+        <section class="invoice-items">
+
+          <h2>Itens da compra</h2>
+
+          <div class="items-header">
+            <span>Produto</span>
+            <span>Quantidade</span>
+          </div>
+
+          @for (item of invoice.items; track item.id) {
+
+            <article class="invoice-item">
+
+              <div class="product-info">
+
+                <strong>
+                  {{ item.productDescription }}
+                </strong>
+
+                <span>
+                  Código do produto: #{{ item.productId }}
+                </span>
+
+              </div>
+
+              <div class="quantity">
+
+                <strong>
+                  {{ item.quantity }}
+                </strong>
+
+              </div>
+
+            </article>
+
+          }
+
+        </section>
+
+        <section class="invoice-total">
+
+          <div class="total-box">
+
+            <span>Total de itens</span>
+
+            <strong>
+              {{ getTotalItems() }}
+            </strong>
+
+          </div>
+
+        </section>
+
+        <footer class="invoice-actions">
+
+          <button
+            type="button"
+            (click)="print()">
+
+            Confirmar compra (Imprimir NFSe)
+
+          </button>
+
+        </footer>
+
+      </div>
+
+    </div>
+
+  </section>
+
+}

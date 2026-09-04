@@ -11,7 +11,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/rs/zerolog/log"
-)
+)\
 
 // Cria produto a partir de uma requisição HTTP POST com JSON no corpo
 func CreateProductHandler(pool *pgxpool.Pool) gin.HandlerFunc {

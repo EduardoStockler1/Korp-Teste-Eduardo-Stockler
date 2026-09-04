@@ -1,0 +1,249 @@
+@if (creatingInvoice) {
+
+  <section class="processing-page">
+
+    <div class="processing-card">
+
+      <div class="spinner"></div>
+
+      <h1>Processando compra...</h1>
+
+      <p>
+        Estamos gerando sua nota fiscal.
+      </p>
+
+      <span>
+        Aguarde um momento.
+      </span>
+
+    </div>
+
+  </section>
+
+}
+
+@else if (createdInvoice) {
+
+  <app-invoice
+    [invoice]="createdInvoice">
+  </app-invoice>
+
+}
+
+@else {
+
+  <section class="products-page">
+
+    <header class="page-header">
+
+      <div>
+
+        <span class="eyebrow">
+          NFSe Issuer
+        </span>
+
+        <h1>
+          Produtos
+        </h1>
+
+        <p>
+          Escolha os produtos que deseja comprar.
+        </p>
+
+      </div>
+
+      <div class="page-actions">
+
+        <a
+          routerLink="/invoice"
+          class="invoices-button">
+          Notas Fiscais
+        </a>
+
+        @if (cart.length > 0) {
+
+          <div class="cart-summary">
+            🛒 {{ cart.length }} produto(s)
+          </div>
+
+        }
+
+      </div>
+
+    </header>
+
+    @if (loading) {
+
+      <div class="state">
+
+        <p>
+          Carregando produtos...
+        </p>
+
+      </div>
+
+    }
+
+    @else if (error) {
+
+      <div class="state error">
+
+        <p>
+          {{ error }}
+        </p>
+
+      </div>
+
+    }
+
+    @else {
+
+      <div class="product-grid">
+
+        @for (product of products; track product.id) {
+
+          <article class="product-card">
+
+            <span class="product-code">
+              {{ product.code }}
+            </span>
+
+            <h2>
+              {{ product.description }}
+            </h2>
+
+            <div class="product-footer">
+
+              <span class="stock">
+
+                Estoque: {{ product.stock }}
+
+                @if (product.stock === 0) {
+
+                  <strong class="out-of-stock">
+                    Esgotado
+                  </strong>
+
+                }
+
+              </span>
+
+              <button
+                type="button"
+                [disabled]="product.stock <= 0"
+                (click)="addToCart(product)">
+                Comprar
+              </button>
+
+            </div>
+
+          </article>
+
+        }
+
+      </div>
+
+    }
+
+    @if (cart.length > 0) {
+
+      <section class="cart">
+
+        <div class="cart-header">
+
+          <div>
+
+            <span class="eyebrow">
+              Seu pedido
+            </span>
+
+            <h2>
+              Carrinho
+            </h2>
+
+          </div>
+
+          <span class="cart-count">
+            {{ cart.length }} produto(s)
+          </span>
+
+        </div>
+
+        <div class="cart-items">
+
+          @for (item of cart; track item.product.id) {
+
+            <article class="cart-item">
+
+              <div class="cart-item-info">
+
+                <strong>
+                  {{ item.product.description }}
+                </strong>
+
+                <span>
+                  Código: {{ item.product.code }}
+                </span>
+
+              </div>
+
+              <div class="quantity-control">
+
+                <button
+                  type="button"
+                  (click)="decreaseQuantity(item)">
+                  −
+                </button>
+
+                <strong>
+                  {{ item.quantity }}
+                </strong>
+
+                <button
+                  type="button"
+                  [disabled]="item.quantity >= item.product.stock"
+                  (click)="increaseQuantity(item)">
+                  +
+                </button>
+
+              </div>
+
+            </article>
+
+          }
+
+        </div>
+
+        <div class="cart-footer">
+
+          <div>
+
+            <span>
+              Total de itens
+            </span>
+
+            <strong>
+              {{ getTotalItems() }}
+            </strong>
+
+          </div>
+
+          <button
+            type="button"
+            class="checkout-button"
+            [disabled]="creatingInvoice"
+            (click)="checkout()">
+
+            Finalizar compra
+
+          </button>
+
+        </div>
+
+      </section>
+
+    }
+
+  </section>
+
+}
